@@ -1,9 +1,8 @@
 ---
 name: pr-demo
 description: Record a short video demo of a pull request's UI change with agent-browser and save it to the Desktop, for the user to drag into the PR description. Use when asked to record, film or demo a PR, or to add a video to a pull request.
-argument-hint: "[PR number or URL] [what the demo should show]"
-disable-model-invocation: true
-allowed-tools: Bash(agent-browser:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh repo view:*), Bash(ffprobe:*), Bash(cp:*)
+compatibility: Needs bash, agent-browser with ffmpeg (libx264), the GitHub CLI (gh) and jq.
+allowed-tools: Bash(agent-browser *) Bash(gh pr view *) Bash(gh pr diff *) Bash(gh repo view *) Bash(ffprobe *) Bash(cp *)
 ---
 
 Record a video of the change in a PR and save it to the Desktop as an .mp4. The user drags it into the PR
@@ -11,19 +10,20 @@ description, where GitHub turns it into an inline player; GitHub has no API for 
 edit the PR. Make it only as long as the change needs, and keep it under 60 seconds.
 Load `agent-browser skills get core` before the first `agent-browser` command.
 
-`~/.claude/skills/pr-demo/scripts/take-lib.sh` is sourced by the take script; it defines `ab`, `glide`, `slowtype`, and
+`scripts/take-lib.sh`, in this skill's folder, is sourced by the take script; it defines `ab`, `glide`, `slowtype`, and
 stops the recording if a step fails.
 
 ## 1. Preflight
 
 - `agent-browser doctor` must pass "Recording". If it does not, stop and tell the user to run `brew install ffmpeg`.
-- Resolve the PR from the first argument: `gh pr view <pr> --json number,url,title,body,headRefName`. With no PR
-  argument, omit `<pr>` to get the current branch's PR. Any remaining text in `$ARGUMENTS` says what to show.
+- Resolve the PR the user named, by number or URL: `gh pr view <pr> --json number,url,title,body,headRefName`. If they
+  named none, omit `<pr>` to get the current branch's PR. Anything else in the request says what to show.
 - The checked-out branch must be the PR's `headRefName`, and the app must be running from it. Find the local URL from
   the project's run skill, README or `package.json` scripts, and start the dev server if it is not up.
 - Set up paths and an isolated browser session:
   ```bash
   OUT="${TMPDIR:-/tmp}/pr-demo/<number>"; mkdir -p "$OUT"   # never inside the repo
+  cp "<skill folder>/scripts/take-lib.sh" "$OUT/"          # <skill folder> holds this SKILL.md
   SESSION="$(agent-browser session id --scope worktree --prefix pr-demo)"
   ```
 
@@ -52,7 +52,7 @@ deliberate pauses. Write `$OUT/take.sh`, then run `SESSION="$SESSION" OUT="$OUT"
 
 ```bash
 #!/usr/bin/env bash
-source ~/.claude/skills/pr-demo/scripts/take-lib.sh
+source "${OUT:?}/take-lib.sh"
 
 ab open "<start url>"
 ab set viewport 1280 800
@@ -78,7 +78,7 @@ Keep `.mp4`: H.264 plays everywhere, including Safari. Keep the default 30 fps u
 
 ## 5. Check the footage
 
-- Read the image at `.data.contactSheetPath` in `$OUT/record.json`. It must show the change itself, not a login
+- Look at the image at `.data.contactSheetPath` in `$OUT/record.json`. It must show the change itself, not a login
   screen, an error overlay, a spinner or a blank page. If it does not, fix the cause and run `take.sh` again.
 - `ffprobe -v error -show_entries format=duration,size -of csv=p=0 "$OUT/demo.mp4"`. GitHub rejects videos over
   10 MB on free plans. If it is larger, shrink it and use the smaller file from here on:
